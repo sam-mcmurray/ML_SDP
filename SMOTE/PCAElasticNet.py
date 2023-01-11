@@ -15,7 +15,7 @@ def run_pca_elastic_net(X, Y, i, model, kf):
     prec_score = []
     re_score = []
     fmeasure_score = []
-    n_features = []
+    n_features = 0
 
     sm = SMOTE(random_state=42)
     X, Y = sm.fit_resample(X, Y)
@@ -45,7 +45,7 @@ def run_pca_elastic_net(X, Y, i, model, kf):
         X_test_important = elastic_model.transform(X_test)
 
         # append the number of features that were selected
-        n_features.append(X_train_important.shape[1])
+        n_features += X_train_important.shape[1]
 
         # model training
         model.fit(X_train_important, y_train)
@@ -71,21 +71,22 @@ def find_n_components_features_pca_elastic_net(max_components, x, y, model, kf):
     print("PCA-ElasticNet")
     best_component = 15
     best_score = [-1, -1, -1, -1]
-    kf = KFold(n_splits=5, random_state=None, shuffle=True)
-    for i in range(4, max_components):
-        try:
-            scores = run_pca_elastic_net(x, y, i, model, kf)
-            if sum(scores[0]) / 3 > best_score[0] and sum(scores[1]) / 3 > best_score[1] and sum(scores[2]) / 3 \
-                    > best_score[2] and sum(scores[3]) / 3 > best_score[3]:
-                best_score[0] = sum(scores[0]) / 3
-                best_score[1] = sum(scores[1]) / 3
-                best_score[2] = sum(scores[2]) / 3
-                best_score[3] = sum(scores[3]) / 3
-                best_component = i
-        except Exception as e:
-            print(e)
-    print(best_component)
+    try:
+        kf = KFold(n_splits=5, random_state=None, shuffle=True)
+        for i in range(4, max_components):
+            for j in range(1, i):
+                scores = run_pca_elastic_net(x, y, i, model, kf)
+                if sum(scores[0]) / 3 > best_score[0] and sum(scores[1]) / 3 > best_score[1] and sum(scores[2]) / 3 \
+                        > best_score[2] and sum(scores[3]) / 3 > best_score[3]:
+                    best_score[0] = sum(scores[0]) / 3
+                    best_score[1] = sum(scores[1]) / 3
+                    best_score[2] = sum(scores[2]) / 3
+                    best_score[3] = sum(scores[3]) / 3
+                    best_component = i
 
+        print(best_component)
+    except Exception as e:
+        print(e)
     return best_component
 
 

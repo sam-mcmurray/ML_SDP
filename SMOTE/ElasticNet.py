@@ -1,43 +1,63 @@
 import pandas as pd
 from Util import check_exists_and_create, handle_missingData_and_label_encode, save_results
 from imblearn.over_sampling import SMOTE
-from imblearn.pipeline import Pipeline
-from sklearn.model_selection import cross_validate
-from sklearn.linear_model import ElasticNet
+from sklearn.linear_model import ElasticNetCV
 from sklearn.feature_selection import SelectFromModel
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import make_scorer, accuracy_score, f1_score, recall_score, precision_score
+from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
 
 
 # Run the model using Elastic Net for feature selection with smote
 def run_elastic_net(X, Y, model, kf) -> list:
-    # create scorer
-    scorer = ({"accuracy": (make_scorer(accuracy_score)),
-               "precision": (make_scorer(precision_score, zero_division=True)),
-               "f1": (make_scorer(f1_score, zero_division=True)),
-               "recall": (make_scorer(recall_score, zero_division=True))})
-    # create pipeline for smote
-    pipe = Pipeline(steps=[('smote', SMOTE(random_state=42)),
-                           ('standardscaler', StandardScaler()),
-                           ('sfm', SelectFromModel(ElasticNet(random_state=42, max_iter=100000),
-                                                   threshold="mean", prefit=False)),
-                           ('model', model)])
-    params = pipe.get_params()
-    # run the model with k-fold cross validation
-    cv_results = cross_validate(pipe,  # Pipeline
-                                X,  # Feature matrix
-                                Y,  # Target vector
-                                cv=kf,  # Cross-validation technique
-                                scoring=scorer,  # Scorer
-                                error_score="raise")
+    acc_score = []
+    prec_score = []
+    re_score = []
+    fmeasure_score = []
+    n_features = 0
+    sm = SMOTE(random_state=42)
+    X, Y = sm.fit_resample(X, Y)
+    for train_index, test_index in kf.split(X):
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = Y[train_index], Y[test_index]
 
-    # Set Scores to variables
-    accuracy = cv_results["test_accuracy"]
-    precision = cv_results["test_precision"]
-    f1 = cv_results["test_f1"]
-    recall = cv_results["test_recall"]
-    # Return the results
-    return [accuracy, precision, f1, recall]
+        # feature scaling
+        sc = StandardScaler()
+        sc.fit(X_train)
+        X_train = sc.transform(X_train)
+        X_test = sc.transform(X_test)
+
+        # Elastic net
+        elastic = ElasticNetCV(random_state=42, max_iter=1000000)
+        elastic.fit(X_train, y_train)
+
+        elastic_model = SelectFromModel(elastic, threshold="mean", prefit=False)
+
+        X_train_important = elastic_model.fit_transform(X_train, y_train)
+        X_test_important = elastic_model.transform(X_test)
+
+        # model training
+        model.fit(X_train_important, y_train)
+        pred_values = model.predict(X_test_important)
+
+        # append the number of features that were selected
+        n_features = n_features + X_train_important.shape[1]
+
+        # model prediction
+        accuracy = accuracy_score(y_test, pred_values)
+        acc_score.append(accuracy)
+
+        precision = precision_score(y_test, pred_values, zero_division=True)
+        prec_score.append(precision)
+
+        f1 = f1_score(y_test, pred_values, zero_division=True)
+        fmeasure_score.append(f1)
+
+        recall = recall_score(y_test, pred_values, zero_division=True)
+        re_score.append(recall)
+
+        print(n_features)
+
+    return [acc_score, prec_score, fmeasure_score, re_score, n_features]
 
 
 def start_elastic_net_experiment(model, file, path_to_directory, results_file, kf):
@@ -57,6 +77,6 @@ def start_elastic_net_experiment(model, file, path_to_directory, results_file, k
         # Run the model and get the results
         scores = run_elastic_net(x, y, model, kf)
         # Save the results.
-        save_results(scores, results_file, file, '', '')
+        save_results(scores, results_file, file, '', scores[4]/10)
     except Exception as e:
         print(e)
